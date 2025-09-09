@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DRYFT SNAKE</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body {
             margin: 0;
@@ -12,10 +13,9 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
             font-family: 'Arial', sans-serif;
             color: white;
-            overflow: hidden;
         }
         
         .game-container {
@@ -25,11 +25,6 @@
             border-radius: 20px;
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
             border: 2px solid rgba(26, 107, 107, 0.3);
-            max-height: 95vh;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
         }
         
         canvas {
@@ -47,18 +42,145 @@
             font-weight: bold;
         }
         
+        .high-score {
+            font-size: 18px;
+            margin: 10px 0;
+            color: #ffd700;
+            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.7);
+            font-weight: bold;
+            text-align: center;
+        }
+        
         .controls {
             margin-top: 10px;
             font-size: 12px;
             opacity: 0.9;
             color: #b0bec5;
         }
-        
-        .game-over {
-            font-size: 32px;
+
+        /* Game Over Overlay */
+        #gameOverOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .overlay-content {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            border: 3px solid #4a90e2;
+            box-shadow: 0 0 30px rgba(74, 144, 226, 0.6);
+            max-width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            margin: auto;
+        }
+
+        .overlay-content h2 {
             color: #ff6b6b;
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(255, 107, 107, 0.8);
+        }
+
+        .final-score {
+            font-size: 1.5em;
+            color: #4a90e2;
+            margin-bottom: 30px;
+        }
+
+        .leaderboard {
+            margin: 30px 0;
+            text-align: left;
+        }
+
+        .leaderboard h3 {
+            color: #4a90e2;
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .leaderboard-entry {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 15px;
+            margin: 5px 0;
+            background: rgba(74, 144, 226, 0.1);
+            border-radius: 8px;
+            border-left: 3px solid #4a90e2;
+        }
+
+        .leaderboard-entry.current-score {
+            background: rgba(255, 107, 107, 0.2);
+            border-left-color: #ff6b6b;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .name-input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid #4a90e2;
+            color: #fff;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 16px;
+            margin: 0 10px;
+            text-align: center;
+            width: 150px;
+        }
+
+        .name-input::placeholder {
+            color: #aaa;
+        }
+
+        .overlay-buttons {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .submit-btn, .play-again-btn {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(74, 144, 226, 0.3);
+        }
+
+        .submit-btn:hover, .play-again-btn:hover {
+            background: linear-gradient(135deg, #357abd, #2c5d8f);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
+        }
+
+        .score-submission {
             margin: 20px 0;
-            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
         }
         
         button {
@@ -120,13 +242,35 @@
         <h1 style="color: #4dd0e1; text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.8); font-size: 2em; margin-bottom: 15px; letter-spacing: 2px;">🐍 DRYFT SNAKE</h1>
         <div class="score">Score: <span id="score">0</span></div>
         <canvas id="gameCanvas" width="400" height="400"></canvas>
+        <div class="high-score">High Score: <span id="highScore">0</span></div>
         <div class="controls">
             Use WASD or Arrow Keys to move | Space to pause
         </div>
-        <div id="gameOver" class="game-over" style="display: none;">
-            Game Over!
-            <br>
-            <button onclick="restartGame()">Play Again</button>
+    </div>
+    
+    <!-- Game Over Overlay -->
+    <div id="gameOverOverlay" style="display: none;">
+        <div class="overlay-content">
+            <h2>Game Over!</h2>
+            <div class="final-score">Final Score: <span id="finalScoreValue">0</span></div>
+            
+            <!-- Score submission form -->
+            <div id="scoreSubmission" class="score-submission">
+                <input type="text" id="playerName" placeholder="ENTER YOUR NAME" maxlength="10" class="name-input">
+                <button id="submitScore" onclick="submitScore()" class="submit-btn">Submit Score</button>
+            </div>
+            
+            <!-- Leaderboard display -->
+            <div class="leaderboard">
+                <h3>🏆 Top 5 Scores</h3>
+                <div id="leaderboardList" class="leaderboard-list">
+                    Loading leaderboard...
+                </div>
+            </div>
+            
+            <div class="overlay-buttons">
+                <button onclick="restartGame()" class="play-again-btn">Play Again</button>
+            </div>
         </div>
     </div>
     
@@ -135,11 +279,17 @@
     </div>
 
     <script>
+        // Supabase configuration
+        const SUPABASE_URL = 'https://avefukfwytozckrbhhfi.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF2ZWZ1a2Z3eXRvemNrcmJoaGZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0MTY1NjQsImV4cCI6MjA3Mjk5MjU2NH0.EMsbUCZbCUCYPOUUO035zVmelvSVLLXAa5yodkfobrQ';
+        
+        // Initialize Supabase client
+        const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+        
         // Game variables
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const scoreElement = document.getElementById('score');
-        const gameOverElement = document.getElementById('gameOver');
 
         // Game configuration
         const GRID_SIZE = 20;
@@ -210,6 +360,9 @@
         function init() {
             // Request audio permission on startup
             requestAudioPermission();
+            
+            // Load initial high score
+            fetchLeaderboard();
             
             generateDustBall();
             gameLoop();
@@ -770,12 +923,108 @@
             }, 500);
         }
 
+        // Leaderboard functions
+        async function submitScore() {
+            const playerName = document.getElementById('playerName').value.trim();
+            
+            if (!playerName) {
+                alert('Please enter your name!');
+                return;
+            }
+            
+            if (!supabase) {
+                alert('Leaderboard not available - please check Supabase configuration');
+                return;
+            }
+            
+            try {
+                const { data, error } = await supabase
+                    .from('scores')
+                    .insert([
+                        { name: playerName, score: score }
+                    ]);
+                
+                if (error) {
+                    console.error('Error submitting score:', error);
+                    alert('Failed to submit score. Please try again.');
+                } else {
+                    document.getElementById('scoreSubmission').innerHTML = 
+                        '<div style="color: #4dd0e1;">✅ Score submitted!</div>';
+                    fetchLeaderboard(); // Refresh leaderboard
+                }
+            } catch (err) {
+                console.error('Error:', err);
+                alert('Failed to submit score. Please try again.');
+            }
+        }
+        
+        async function fetchLeaderboard() {
+            if (!supabase) {
+                document.getElementById('leaderboardList').innerHTML = 
+                    '<div style="color: #ff6b6b;">Leaderboard not available</div>';
+                return;
+            }
+            
+            try {
+                const { data, error } = await supabase
+                    .from('scores')
+                    .select('name, score, created_at')
+                    .order('score', { ascending: false })
+                    .limit(5);
+                
+                if (error) {
+                    console.error('Error fetching leaderboard:', error);
+                    document.getElementById('leaderboardList').innerHTML = 
+                        '<div style="color: #ff6b6b;">Failed to load leaderboard</div>';
+                    return;
+                }
+                
+                if (data && data.length > 0) {
+                    // Update high score display
+                    const highScore = data[0].score;
+                    document.getElementById('highScore').textContent = highScore;
+                    
+                    const leaderboardHTML = data.map((entry, index) => {
+                        const rank = index + 1;
+                        const emoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
+                        return `<div style="margin: 5px 0; padding: 5px; background: rgba(77, 208, 225, 0.1); border-radius: 5px;">
+                            ${emoji} ${entry.name} - ${entry.score} points
+                        </div>`;
+                    }).join('');
+                    
+                    document.getElementById('leaderboardList').innerHTML = leaderboardHTML;
+                } else {
+                    document.getElementById('leaderboardList').innerHTML = 
+                        '<div style="color: #b0bec5;">No scores yet - be the first!</div>';
+                }
+            } catch (err) {
+                console.error('Error:', err);
+                document.getElementById('leaderboardList').innerHTML = 
+                    '<div style="color: #ff6b6b;">Failed to load leaderboard</div>';
+            }
+        }
+
         // Game over
         function gameOver() {
             gameRunning = false;
             skinColors = []; // Clear skin colors array when game ends
             segmentDirections = []; // Clear directions array when game ends
-            gameOverElement.style.display = 'block';
+            
+            // Update final score display
+            document.getElementById('finalScoreValue').textContent = score;
+            
+            // Reset score submission form
+            document.getElementById('playerName').value = '';
+            document.getElementById('scoreSubmission').innerHTML = `
+                <input type="text" id="playerName" placeholder="ENTER YOUR NAME" maxlength="10" class="name-input">
+                <button id="submitScore" onclick="submitScore()" class="submit-btn">Submit Score</button>
+            `;
+            
+            // Load leaderboard
+            fetchLeaderboard();
+            
+            // Show the overlay
+            document.getElementById('gameOverOverlay').style.display = 'flex';
         }
 
         // Restart game
@@ -793,7 +1042,7 @@
             isPaused = false;
             jumpscareTriggered = false; // Reset jumpscare flag
             scoreElement.textContent = score;
-            gameOverElement.style.display = 'none';
+            document.getElementById('gameOverOverlay').style.display = 'none';
             generateDustBall();
         }
 
