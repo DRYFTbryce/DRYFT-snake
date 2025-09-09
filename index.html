@@ -938,6 +938,14 @@
                 return;
             }
             
+            // Validate score integrity - score should match snake length
+            const expectedScore = (snake.length - 1) * 10;
+            if (score !== expectedScore) {
+                alert('Score validation failed. Please play fairly!');
+                console.log(`Score validation failed: expected ${expectedScore}, got ${score}`);
+                return;
+            }
+            
             if (!supabase) {
                 alert('Leaderboard not available - please check Supabase configuration');
                 return;
@@ -1013,6 +1021,15 @@
         // Game over
         function gameOver() {
             gameRunning = false;
+            
+            // Validate score integrity before showing game over screen
+            const expectedScore = (snake.length - 1) * 10;
+            if (score !== expectedScore) {
+                console.log(`Score validation failed at game over: expected ${expectedScore}, got ${score}`);
+                score = expectedScore; // Correct the score
+                scoreElement.textContent = score;
+            }
+            
             skinColors = []; // Clear skin colors array when game ends
             segmentDirections = []; // Clear directions array when game ends
             
