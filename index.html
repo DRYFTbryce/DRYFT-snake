@@ -6,6 +6,10 @@
     <title>DRYFT SNAKE</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
+        html {
+            overflow: hidden;
+        }
+        
         body {
             margin: 0;
             padding: 10px;
@@ -16,6 +20,7 @@
             min-height: 100vh;
             font-family: 'Arial', sans-serif;
             color: white;
+            overflow: hidden;
         }
         
         .game-container {
@@ -71,6 +76,7 @@
             justify-content: center;
             z-index: 1000;
             backdrop-filter: blur(5px);
+            overflow: hidden;
         }
 
         .overlay-content {
@@ -82,9 +88,9 @@
             box-shadow: 0 0 30px rgba(74, 144, 226, 0.6);
             max-width: 90%;
             max-height: 90vh;
-            overflow-y: auto;
             position: relative;
             margin: auto;
+            overflow: hidden;
         }
 
         .overlay-content h2 {
