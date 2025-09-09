@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DRYFT SNAKE</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 10px;
+            background: linear-gradient(135deg, #0d4f4f, #1a6b6b, #267373);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Arial', sans-serif;
+            color: white;
+            overflow: hidden;
+        }
+        
+        .game-container {
+            text-align: center;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(26, 107, 107, 0.3);
+            max-height: 95vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        canvas {
+            border: 3px solid #1a6b6b;
+            border-radius: 15px;
+            background: #f5f5f5;
+            box-shadow: 0 6px 25px rgba(0, 0, 0, 0.6);
+        }
+        
+        .score {
+            font-size: 24px;
+            margin: 10px 0;
+            color: #4dd0e1;
+            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.7);
+            font-weight: bold;
+        }
+        
+        .controls {
+            margin-top: 10px;
+            font-size: 12px;
+            opacity: 0.9;
+            color: #b0bec5;
+        }
+        
+        .game-over {
+            font-size: 32px;
+            color: #ff6b6b;
+            margin: 20px 0;
+            text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.8);
+        }
+        
+        button {
+            background: linear-gradient(135deg, #1a6b6b, #267373);
+            color: white;
+            border: 2px solid #4dd0e1;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #267373, #2d8080);
+            box-shadow: 0 4px 15px rgba(77, 208, 225, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .jumpscare {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle, #ff0000, #8b0000);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            animation: jumpscareFlash 0.5s ease-in-out;
+        }
+        
+        .jumpscare-text {
+            font-size: 8em;
+            color: white;
+            text-shadow: 0 0 20px #ff0000;
+            animation: jumpscareShake 0.5s ease-in-out;
+        }
+        
+        @keyframes jumpscareFlash {
+            0% { opacity: 0; }
+            50% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        
+        @keyframes jumpscareShake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px) rotate(-2deg); }
+            75% { transform: translateX(10px) rotate(2deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1 style="color: #4dd0e1; text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.8); font-size: 2em; margin-bottom: 15px; letter-spacing: 2px;">🐍 DRYFT SNAKE</h1>
+        <div class="score">Score: <span id="score">0</span></div>
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        <div class="controls">
+            Use WASD or Arrow Keys to move | Space to pause
+        </div>
+        <div id="gameOver" class="game-over" style="display: none;">
+            Game Over!
+            <br>
+            <button onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+    
+    <div id="jumpscare" class="jumpscare">
+        <div class="jumpscare-text">💀 FUNNY NUMBER 💀</div>
+    </div>
+
+    <script>
+        // Game variables
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const gameOverElement = document.getElementById('gameOver');
+
+        // Game configuration
+        const GRID_SIZE = 20;
+        const CANVAS_WIDTH = canvas.width;
+        const CANVAS_HEIGHT = canvas.height;
+        const COLS = CANVAS_WIDTH / GRID_SIZE;
+        const ROWS = CANVAS_HEIGHT / GRID_SIZE;
+
+        // Game state
+        let snake = [{x: 10, y: 10}];
+        let direction = {x: 1, y: 0};
+        let nextDirection = {x: 1, y: 0};
+        let moveQueue = []; // Queue for storing rapid direction changes
+        let skinColors = [getRandomSkinColor()]; // Array of skin colors (front to back)
+        let segmentDirections = [{x: 1, y: 0}]; // Array of directions each segment is facing (front to back)
+        let dustBalls = [];
+        let score = 0;
+        let gameRunning = true;
+        let isPaused = false;
+        let lastMoveTime = 0;
+        let jumpscareTriggered = false;
+        
+        // Audio context - reuse single instance
+        let audioContext = null;
+        
+        // Snake head image
+        const snakeHeadImage = new Image();
+        snakeHeadImage.src = 'snake-head.png'; // Replace with your image path
+        let imageLoaded = false;
+        
+        snakeHeadImage.onload = function() {
+            imageLoaded = true;
+            console.log('Snake head image loaded');
+        };
+        
+        snakeHeadImage.onerror = function() {
+            console.log('Failed to load snake head image, using default head');
+        };
+        
+        // Dynamic speed system
+        const INITIAL_SPEED = 140; // Starting speed (halfway between old 200 and 80)
+        const MAX_SPEED = 120; // Maximum speed after 20 pieces - closer to current 150
+        const SPEED_RAMP_LENGTH = 20; // Number of pieces to reach max speed
+        
+        function getCurrentMoveInterval() {
+            const progress = Math.min(snake.length - 1, SPEED_RAMP_LENGTH) / SPEED_RAMP_LENGTH;
+            return INITIAL_SPEED - (INITIAL_SPEED - MAX_SPEED) * progress;
+        }
+
+        // Generate random human skin color
+        function getRandomSkinColor() {
+            const skinColors = [
+                '#FDBCB4', // Light pink
+                '#EEA990', // Light peach
+                '#D08B5B', // Medium tan
+                '#AE5D29', // Medium brown
+                '#8B4513', // Dark brown
+                '#F5DEB3', // Wheat
+                '#DEB887', // Burlywood
+                '#CD853F', // Peru
+                '#A0522D', // Sienna
+                '#6B4423'  // Dark sienna
+            ];
+            return skinColors[Math.floor(Math.random() * skinColors.length)];
+        }
+
+        // Initialize the game
+        function init() {
+            // Request audio permission on startup
+            requestAudioPermission();
+            
+            generateDustBall();
+            gameLoop();
+            
+            // Force a restart to fix visibility issues
+            setTimeout(() => {
+                gameOver();
+                setTimeout(() => {
+                    restartGame();
+                }, 100);
+            }, 100);
+        }
+
+        // Request audio permission
+        function requestAudioPermission() {
+            // Don't create audio context here - wait for user interaction
+            console.log('Audio will be initialized on first user interaction');
+        }
+
+        // Initialize audio context on first user interaction
+        function initAudioContext() {
+            if (!audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    console.log('Audio context created');
+                } catch (e) {
+                    console.log('Audio not supported');
+                }
+            }
+        }
+
+        // Play movement sound
+        function playMoveSound() {
+            initAudioContext(); // Initialize on first use
+            if (!audioContext) return;
+            
+            try {
+                const oscillator = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                
+                oscillator.connect(gain);
+                gain.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(150, audioContext.currentTime);
+                oscillator.type = 'square';
+                
+                gain.gain.setValueAtTime(0.05, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.1);
+            } catch (e) {
+                // Audio failed, continue silently
+                console.log('Move sound failed:', e);
+            }
+        }
+
+        // Play collection sound
+        function playCollectionSound() {
+            initAudioContext(); // Initialize on first use
+            if (!audioContext) return;
+            
+            try {
+                const oscillator = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                
+                oscillator.connect(gain);
+                gain.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(300, audioContext.currentTime);
+                oscillator.frequency.setValueAtTime(400, audioContext.currentTime + 0.05);
+                oscillator.type = 'square';
+                
+                gain.gain.setValueAtTime(0.08, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.15);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.15);
+            } catch (e) {
+                // Audio failed, continue silently
+                console.log('Collection sound failed:', e);
+            }
+        }
+
+        // Generate a new dust ball at random position
+        function generateDustBall() {
+            let newDustBall;
+            do {
+                newDustBall = {
+                    x: Math.floor(Math.random() * COLS),
+                    y: Math.floor(Math.random() * ROWS),
+                    animation: Math.random() * Math.PI * 2
+                };
+            } while (snake.some(segment => segment.x === newDustBall.x && segment.y === newDustBall.y));
+            
+            dustBalls.push(newDustBall);
+        }
+
+        // Add move to queue (prevents invalid moves and limits queue size)
+        function queueMove(newDirection) {
+            // Don't allow opposite direction moves
+            const lastDirection = moveQueue.length > 0 ? moveQueue[moveQueue.length - 1] : direction;
+            
+            if ((newDirection.x === 1 && lastDirection.x === -1) ||
+                (newDirection.x === -1 && lastDirection.x === 1) ||
+                (newDirection.y === 1 && lastDirection.y === -1) ||
+                (newDirection.y === -1 && lastDirection.y === 1)) {
+                return; // Invalid move, ignore
+            }
+            
+            // Don't add duplicate moves
+            if (moveQueue.length > 0) {
+                const lastMove = moveQueue[moveQueue.length - 1];
+                if (lastMove.x === newDirection.x && lastMove.y === newDirection.y) {
+                    return; // Same move, ignore
+                }
+            }
+            
+            // Limit queue size to prevent excessive buffering
+            if (moveQueue.length < 3) {
+                moveQueue.push(newDirection);
+            }
+        }
+
+        // Handle keyboard input
+        document.addEventListener('keydown', (e) => {
+            if (!gameRunning) return;
+
+            switch(e.key.toLowerCase()) {
+                case 'w':
+                case 'arrowup':
+                    queueMove({x: 0, y: -1});
+                    break;
+                case 's':
+                case 'arrowdown':
+                    queueMove({x: 0, y: 1});
+                    break;
+                case 'a':
+                case 'arrowleft':
+                    queueMove({x: -1, y: 0});
+                    break;
+                case 'd':
+                case 'arrowright':
+                    queueMove({x: 1, y: 0});
+                    break;
+                case ' ':
+                    isPaused = !isPaused;
+                    break;
+            }
+        });
+
+        // Update game logic
+        function update(currentTime) {
+            if (!gameRunning || isPaused) return;
+
+            // Get current speed based on snake length
+            const currentMoveInterval = getCurrentMoveInterval();
+            
+            // Check if it's time to move using dynamic speed
+            if (currentTime - lastMoveTime > currentMoveInterval) {
+                // Process move queue - get next direction from queue if available
+                if (moveQueue.length > 0) {
+                    const queuedMove = moveQueue.shift(); // Remove first item from queue
+                    
+                    // Validate the queued move is still valid (not opposite to current direction)
+                    if (!((queuedMove.x === 1 && direction.x === -1) ||
+                          (queuedMove.x === -1 && direction.x === 1) ||
+                          (queuedMove.y === 1 && direction.y === -1) ||
+                          (queuedMove.y === -1 && direction.y === 1))) {
+                        direction = queuedMove;
+                    }
+                }
+                
+                // Calculate new head position
+                const head = {...snake[0]};
+                head.x += direction.x;
+                head.y += direction.y;
+                // Don't assign skin color here - only when growing
+
+                // Wrap around walls instead of collision
+                if (head.x < 0) {
+                    head.x = COLS - 1;
+                } else if (head.x >= COLS) {
+                    head.x = 0;
+                }
+                
+                if (head.y < 0) {
+                    head.y = ROWS - 1;
+                } else if (head.y >= ROWS) {
+                    head.y = 0;
+                }
+
+                // Check self collision
+                if (snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+                    gameOver();
+                    return;
+                }
+
+                // Move snake
+                snake.unshift(head);
+                
+                // Update segment directions - add current direction to front
+                segmentDirections.unshift({...direction});
+                
+                // Play movement sound
+                playMoveSound();
+
+                // Check dust ball collection
+                let dustBallEaten = false;
+                dustBalls = dustBalls.filter(dustBall => {
+                    if (head.x === dustBall.x && head.y === dustBall.y) {
+                        score += 10;
+                        scoreElement.textContent = score;
+                        
+                        // Play collection sound
+                        playCollectionSound();
+
+                        // Trigger jumpscare at score 690
+                        if (score === 690 && !jumpscareTriggered) {
+                            triggerJumpscare();
+                        }
+                        
+                        dustBallEaten = true;
+                        return false;
+                    }
+                    return true;
+                });
+
+                // Remove tail if no dust ball eaten, otherwise add new skin color
+                if (!dustBallEaten) {
+                    snake.pop();
+                    segmentDirections.pop(); // Remove direction for removed segment
+                } else {
+                    // Snake is growing - add a new skin color to the front of the array
+                    skinColors.unshift(getRandomSkinColor());
+                }
+
+                // Generate new dust ball if needed
+                if (dustBalls.length === 0) {
+                    generateDustBall();
+                }
+
+                lastMoveTime = currentTime;
+            }
+        }
+
+        // Render the game
+        function render(currentTime) {
+            // Clear canvas with light background
+            ctx.fillStyle = '#f5f5f5';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // Draw faint grid
+            ctx.strokeStyle = 'rgba(26, 107, 107, 0.15)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= CANVAS_WIDTH; x += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, CANVAS_HEIGHT);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= CANVAS_HEIGHT; y += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(CANVAS_WIDTH, y);
+                ctx.stroke();
+            }
+
+            // Draw snake
+            drawSnake();
+
+            // Draw dust balls with animation
+            drawDustBalls(currentTime);
+
+            // Draw pause indicator
+            if (isPaused) {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.font = '48px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('PAUSED', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+            }
+        }
+
+        // Draw the snake with circular segments
+        function drawSnake() {
+            const headRadius = GRID_SIZE / 2 - 2;
+            const minRadius = headRadius * 0.5; // 50% of head size
+            
+            for (let i = 0; i < snake.length; i++) {
+                const segment = snake[i];
+                const isHead = i === 0;
+                const x = segment.x * GRID_SIZE;
+                const y = segment.y * GRID_SIZE;
+                
+                if (isHead) {
+                    // Draw snake head
+                    drawSnakeHead(x + GRID_SIZE / 2, y + GRID_SIZE / 2, headRadius, direction);
+                } else {
+                    // Draw person body segment using skin color and direction from arrays
+                    const skinColor = skinColors[i] || skinColors[skinColors.length - 1]; // Fallback to last color if array is shorter
+                    const segmentDirection = segmentDirections[i] || direction; // Fallback to current direction if array is shorter
+                    drawPersonBody(x + GRID_SIZE / 2, y + GRID_SIZE / 2, headRadius, segmentDirection, skinColor);
+                }
+            }
+        }
+
+        // Draw person body segment (top-down view)
+        function drawPersonBody(x, y, radius, direction, skinColor) {
+            // Calculate rotation angle based on direction
+            let rotation = 0;
+            if (direction.x === 1 && direction.y === 0) {
+                rotation = -Math.PI / 2; // Moving right
+            } else if (direction.x === -1 && direction.y === 0) {
+                rotation = Math.PI / 2; // Moving left
+            } else if (direction.x === 0 && direction.y === -1) {
+                rotation = Math.PI; // Moving up
+            } else if (direction.x === 0 && direction.y === 1) {
+                rotation = 0; // Moving down (default)
+            }
+            
+            // Save canvas state
+            ctx.save();
+            
+            // Move to center of person position
+            ctx.translate(x, y);
+            
+            // Rotate canvas
+            ctx.rotate(rotation);
+            
+            const bodyRadius = radius * 0.7; // Make body slightly smaller than head
+            const headRadius = radius * 0.5;
+            const armLength = radius * 0.8;
+            const armWidth = 2;
+            
+            // Draw body (torso circle)
+            ctx.fillStyle = '#4a90e2'; // Blue shirt
+            ctx.beginPath();
+            ctx.arc(0, bodyRadius * 0.3, bodyRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw head
+            ctx.fillStyle = skinColor;
+            ctx.beginPath();
+            ctx.arc(0, -headRadius * 0.5, headRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw head outline
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            // Draw arms extending from sides
+            ctx.strokeStyle = skinColor;
+            ctx.lineWidth = armWidth;
+            ctx.lineCap = 'round';
+            
+            // Left arm
+            ctx.beginPath();
+            ctx.moveTo(-bodyRadius * 0.8, bodyRadius * 0.2);
+            ctx.lineTo(-armLength, bodyRadius * 0.4);
+            ctx.stroke();
+            
+            // Right arm
+            ctx.beginPath();
+            ctx.moveTo(bodyRadius * 0.8, bodyRadius * 0.2);
+            ctx.lineTo(armLength, bodyRadius * 0.4);
+            ctx.stroke();
+            
+            // Draw simple eyes on head
+            ctx.fillStyle = '#000';
+            const eyeSize = 1;
+            ctx.beginPath();
+            ctx.arc(-headRadius * 0.3, -headRadius * 0.5, eyeSize, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(headRadius * 0.3, -headRadius * 0.5, eyeSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Restore canvas state
+            ctx.restore();
+        }
+
+        // Draw snake head (with image rotation based on direction)
+        function drawSnakeHead(x, y, radius, direction) {
+            if (imageLoaded) {
+                // Calculate rotation angle based on direction
+                // Image faces down by default, so adjust rotations accordingly
+                let rotation = 0;
+                if (direction.x === 1 && direction.y === 0) {
+                    rotation = -Math.PI / 2; // Moving right (rotate left from down)
+                } else if (direction.x === -1 && direction.y === 0) {
+                    rotation = Math.PI / 2; // Moving left (rotate right from down)
+                } else if (direction.x === 0 && direction.y === -1) {
+                    rotation = Math.PI; // Moving up (rotate 180° from down)
+                } else if (direction.x === 0 && direction.y === 1) {
+                    rotation = 0; // Moving down (no rotation needed)
+                }
+                
+                // Save canvas state
+                ctx.save();
+                
+                // Move to center of head position
+                ctx.translate(x, y);
+                
+                // Rotate canvas
+                ctx.rotate(rotation);
+                
+                // Calculate image size - make it bigger than the cell
+                const imageSize = radius * 2.4; // Increased from 2.0 to 2.4 for bigger size
+                
+                // Draw image centered (image center is at 0,0 due to translate)
+                ctx.drawImage(
+                    snakeHeadImage,
+                    -imageSize / 2,    // x offset to center
+                    -imageSize / 2,    // y offset to center
+                    imageSize,         // width
+                    imageSize          // height
+                );
+                
+                // Restore canvas state
+                ctx.restore();
+            } else {
+                // Fallback to original circular head if image not loaded
+                ctx.fillStyle = '#1a6b6b';
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Add border
+                ctx.strokeStyle = '#0d4f4f';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Add shine effect
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.beginPath();
+                ctx.arc(x - 4, y - 4, radius * 0.6, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Add eyes
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(x - 3, y - 3, 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(x + 3, y - 3, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Draw animated dust balls
+        function drawDustBalls(currentTime) {
+            dustBalls.forEach((dustBall, index) => {
+                const x = dustBall.x * GRID_SIZE + GRID_SIZE / 2;
+                const y = dustBall.y * GRID_SIZE + GRID_SIZE / 2;
+                
+                // Animate dust ball
+                dustBall.animation += 0.05;
+                const pulse = Math.sin(dustBall.animation) * 0.3 + 1;
+                const rotation = currentTime * 0.001 + index;
+                
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(rotation);
+                
+                // Draw dust ball as small black particles
+                const particleCount = 8;
+                for (let i = 0; i < particleCount; i++) {
+                    const angle = (i / particleCount) * Math.PI * 2;
+                    const distance = 5 * pulse;
+                    const particleX = Math.cos(angle) * distance;
+                    const particleY = Math.sin(angle) * distance;
+                    
+                    ctx.fillStyle = `rgba(30, 30, 30, ${0.8 + Math.sin(dustBall.animation + i) * 0.2})`;
+                    ctx.beginPath();
+                    ctx.arc(particleX, particleY, 2.5 * pulse, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                // Central black core
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath();
+                ctx.arc(0, 0, 4 * pulse, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Dark outline for better visibility
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                ctx.restore();
+            });
+        }
+
+        // Jumpscare function
+        function triggerJumpscare() {
+            jumpscareTriggered = true;
+            const jumpscareElement = document.getElementById('jumpscare');
+            
+            // Show the jumpscare
+            jumpscareElement.style.display = 'flex';
+            
+            // Play a loud, jarring sound effect
+            initAudioContext(); // Initialize on first use
+            if (!audioContext) return;
+            
+            try {
+                // Create multiple oscillators for a more chaotic sound
+                for (let i = 0; i < 3; i++) {
+                    const oscillator = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    
+                    oscillator.connect(gain);
+                    gain.connect(audioContext.destination);
+                    
+                    // Different frequencies for chaos
+                    const baseFreq = [666, 440, 220][i];
+                    oscillator.frequency.setValueAtTime(baseFreq, audioContext.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, audioContext.currentTime + 0.2);
+                    oscillator.frequency.setValueAtTime(baseFreq * 2, audioContext.currentTime + 0.3);
+                    oscillator.frequency.exponentialRampToValueAtTime(baseFreq * 0.3, audioContext.currentTime + 0.8);
+                    
+                    // Sawtooth wave for harsh sound
+                    oscillator.type = 'sawtooth';
+                    
+                    // Much louder volume
+                    gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.8);
+                    
+                    oscillator.start(audioContext.currentTime + i * 0.05);
+                    oscillator.stop(audioContext.currentTime + 0.8);
+                }
+                
+                // Add a low rumble
+                const rumble = audioContext.createOscillator();
+                const rumbleGain = audioContext.createGain();
+                
+                rumble.connect(rumbleGain);
+                rumbleGain.connect(audioContext.destination);
+                
+                rumble.frequency.setValueAtTime(50, audioContext.currentTime);
+                rumble.type = 'square';
+                
+                rumbleGain.gain.setValueAtTime(0.4, audioContext.currentTime);
+                rumbleGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1.0);
+                
+                rumble.start(audioContext.currentTime);
+                rumble.stop(audioContext.currentTime + 1.0);
+                
+            } catch (e) {
+                // Audio failed, continue without sound
+                console.log('Jumpscare audio failed:', e);
+            }
+            
+            // Hide the jumpscare after animation completes
+            setTimeout(() => {
+                jumpscareElement.style.display = 'none';
+            }, 500);
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            skinColors = []; // Clear skin colors array when game ends
+            segmentDirections = []; // Clear directions array when game ends
+            gameOverElement.style.display = 'block';
+        }
+
+        // Restart game
+        function restartGame() {
+            snake = [{x: 10, y: 10}];
+            direction = {x: 1, y: 0};
+            nextDirection = {x: 1, y: 0};
+            moveQueue = []; // Clear move queue
+            skinColors = [getRandomSkinColor()]; // Reset skin colors array
+            segmentDirections = [{x: 1, y: 0}]; // Reset directions array
+            dustBalls = [];
+            score = 0;
+            score = 0;
+            gameRunning = true;
+            isPaused = false;
+            jumpscareTriggered = false; // Reset jumpscare flag
+            scoreElement.textContent = score;
+            gameOverElement.style.display = 'none';
+            generateDustBall();
+        }
+
+        // Main game loop
+        function gameLoop(currentTime) {
+            update(currentTime);
+            render(currentTime);
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start the game
+        init();
+    </script>
+</body>
+</html>
