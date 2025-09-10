@@ -208,39 +208,6 @@
             box-shadow: 0 4px 15px rgba(77, 208, 225, 0.3);
             transform: translateY(-2px);
         }
-        
-        .jumpscare {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: radial-gradient(circle, #ff0000, #8b0000);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            animation: jumpscareFlash 0.5s ease-in-out;
-        }
-        
-        .jumpscare-text {
-            font-size: 8em;
-            color: white;
-            text-shadow: 0 0 20px #ff0000;
-            animation: jumpscareShake 0.5s ease-in-out;
-        }
-        
-        @keyframes jumpscareFlash {
-            0% { opacity: 0; }
-            50% { opacity: 1; }
-            100% { opacity: 0; }
-        }
-        
-        @keyframes jumpscareShake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-10px) rotate(-2deg); }
-            75% { transform: translateX(10px) rotate(2deg); }
-        }
     </style>
 </head>
 <body>
@@ -279,10 +246,6 @@
             </div>
         </div>
     </div>
-    
-    <div id="jumpscare" class="jumpscare">
-        <div class="jumpscare-text">💀 FUNNY NUMBER 💀</div>
-    </div>
 
     <script>
         // Supabase configuration
@@ -316,7 +279,6 @@
         let gameRunning = true;
         let isPaused = false;
         let lastMoveTime = 0;
-        let jumpscareTriggered = false;
         
         // Audio context - reuse single instance
         let audioContext = null;
@@ -585,11 +547,6 @@
                         
                         // Play collection sound
                         playCollectionSound();
-
-                        // Trigger jumpscare at score 690
-                        if (score === 690 && !jumpscareTriggered) {
-                            triggerJumpscare();
-                        }
                         
                         dustBallEaten = true;
                         return false;
@@ -863,72 +820,6 @@
             });
         }
 
-        // Jumpscare function
-        function triggerJumpscare() {
-            jumpscareTriggered = true;
-            const jumpscareElement = document.getElementById('jumpscare');
-            
-            // Show the jumpscare
-            jumpscareElement.style.display = 'flex';
-            
-            // Play a loud, jarring sound effect
-            initAudioContext(); // Initialize on first use
-            if (!audioContext) return;
-            
-            try {
-                // Create multiple oscillators for a more chaotic sound
-                for (let i = 0; i < 3; i++) {
-                    const oscillator = audioContext.createOscillator();
-                    const gain = audioContext.createGain();
-                    
-                    oscillator.connect(gain);
-                    gain.connect(audioContext.destination);
-                    
-                    // Different frequencies for chaos
-                    const baseFreq = [666, 440, 220][i];
-                    oscillator.frequency.setValueAtTime(baseFreq, audioContext.currentTime);
-                    oscillator.frequency.exponentialRampToValueAtTime(baseFreq * 0.5, audioContext.currentTime + 0.2);
-                    oscillator.frequency.setValueAtTime(baseFreq * 2, audioContext.currentTime + 0.3);
-                    oscillator.frequency.exponentialRampToValueAtTime(baseFreq * 0.3, audioContext.currentTime + 0.8);
-                    
-                    // Sawtooth wave for harsh sound
-                    oscillator.type = 'sawtooth';
-                    
-                    // Much louder volume
-                    gain.gain.setValueAtTime(0.3, audioContext.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.8);
-                    
-                    oscillator.start(audioContext.currentTime + i * 0.05);
-                    oscillator.stop(audioContext.currentTime + 0.8);
-                }
-                
-                // Add a low rumble
-                const rumble = audioContext.createOscillator();
-                const rumbleGain = audioContext.createGain();
-                
-                rumble.connect(rumbleGain);
-                rumbleGain.connect(audioContext.destination);
-                
-                rumble.frequency.setValueAtTime(50, audioContext.currentTime);
-                rumble.type = 'square';
-                
-                rumbleGain.gain.setValueAtTime(0.4, audioContext.currentTime);
-                rumbleGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1.0);
-                
-                rumble.start(audioContext.currentTime);
-                rumble.stop(audioContext.currentTime + 1.0);
-                
-            } catch (e) {
-                // Audio failed, continue without sound
-                console.log('Jumpscare audio failed:', e);
-            }
-            
-            // Hide the jumpscare after animation completes
-            setTimeout(() => {
-                jumpscareElement.style.display = 'none';
-            }, 500);
-        }
-
         // Leaderboard functions
         async function submitScore() {
             const playerName = document.getElementById('playerName').value.trim();
@@ -980,11 +871,11 @@
             }
             
             try {
+                // Get all scores and group by name to find max score per player
                 const { data, error } = await supabase
                     .from('scores')
                     .select('name, score, created_at')
-                    .order('score', { ascending: false })
-                    .limit(5);
+                    .order('score', { ascending: false });
                 
                 if (error) {
                     console.error('Error fetching leaderboard:', error);
@@ -994,11 +885,24 @@
                 }
                 
                 if (data && data.length > 0) {
+                    // Group scores by player name and keep only the highest score per player
+                    const playerBestScores = {};
+                    data.forEach(entry => {
+                        if (!playerBestScores[entry.name] || entry.score > playerBestScores[entry.name].score) {
+                            playerBestScores[entry.name] = entry;
+                        }
+                    });
+                    
+                    // Convert back to array and sort by score
+                    const uniquePlayerScores = Object.values(playerBestScores)
+                        .sort((a, b) => b.score - a.score)
+                        .slice(0, 5); // Take top 5
+                    
                     // Update high score display
-                    const highScore = data[0].score;
+                    const highScore = uniquePlayerScores[0].score;
                     document.getElementById('highScore').textContent = highScore;
                     
-                    const leaderboardHTML = data.map((entry, index) => {
+                    const leaderboardHTML = uniquePlayerScores.map((entry, index) => {
                         const rank = index + 1;
                         const emoji = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
                         return `<div style="margin: 5px 0; padding: 5px; background: rgba(77, 208, 225, 0.1); border-radius: 5px;">
@@ -1063,7 +967,6 @@
             score = 0;
             gameRunning = true;
             isPaused = false;
-            jumpscareTriggered = false; // Reset jumpscare flag
             scoreElement.textContent = score;
             document.getElementById('gameOverOverlay').style.display = 'none';
             generateDustBall();
